@@ -11,8 +11,8 @@ export interface ICourse extends Document {
   feeType?: "monthly" | "total";
 
   isEmiAvailable?: boolean;
-  emiType?: "monthly" | "quarterly" | "yearly";
-  emiDuration?: number;
+  emiType?: "monthly" | "quarterly" | "yearly" | null;
+  emiDuration?: number | null;
 
   status: "active" | "inactive";
 

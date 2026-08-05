@@ -65,11 +65,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const course = await Course.create({
+    const courseData: any = {
       ownerId,
       branchId,
       ...data,
-    });
+    };
+
+    const course = await Course.create(courseData);
 
     return NextResponse.json(
       {

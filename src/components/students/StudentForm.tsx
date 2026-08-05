@@ -21,7 +21,7 @@ interface Batch {
 }
 
 interface StudentFormProps {
-  initialData?: Record<string, unknown> & { _id?: string, photo?: string, fullName?: string, phone?: string, courseId?: any, batchId?: any, aadhaarNumber?: string, guardianPhone?: string, customFee?: number, status?: string };
+  initialData?: Record<string, unknown> & { _id?: string, photo?: string, fullName?: string, phone?: string, courseId?: any, batchId?: any, aadhaarNumber?: string, guardianPhone?: string, customFee?: number, status?: string, isEmiEnrolled?: boolean };
   isEdit?: boolean;
 }
 
