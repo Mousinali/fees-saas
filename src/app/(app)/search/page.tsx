@@ -92,7 +92,12 @@ export default function SearchPage() {
             <i className="ri-loader-4-line text-3xl animate-spin"></i>
           </div>
         ) : students.length === 0 ? (
-          <div className="text-center pt-10 text-slate-500">
+          <div className="text-center pt-10 text-slate-500 flex flex-col items-center justify-center font-medium">
+            <img 
+              src="/images/no-student-found.svg" 
+              alt="No students found" 
+              className="h-40 object-contain mb-4 opacity-90"
+            />
             No students found matching "{debouncedSearch}"
           </div>
         ) : (

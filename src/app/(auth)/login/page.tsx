@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import Button from "@/components/ui/Button";
@@ -14,9 +14,19 @@ export default function LoginPage() {
     password: "",
   });
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get("kicked") === "desktop") {
+        toast.error("Logged out: Please login from a mobile phone.");
+        window.history.replaceState({}, "", "/login");
+      }
+    }
+  }, []);
+
   const [loading, setLoading] = useState(false);
   const [openBranchSheet, setOpenBranchSheet] = useState(false);
-  const [branches, setBranches] = useState<{_id: string, name: string}[]>([]);
+  const [branches, setBranches] = useState<{ _id: string; name: string }[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState<string>("");
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -43,11 +53,16 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (data.success) {
-        if (data.user.accountType === "coaching_center" && data.user.branches?.length > 0) {
+        if (data.user.role === "super_admin") {
+          window.location.href = "/admin/dashboard";
+        } else if (
+          data.user.accountType === "coaching_center" &&
+          data.user.branches?.length > 0
+        ) {
           setBranches(data.user.branches);
           setOpenBranchSheet(true);
         } else {
-          router.push("/dashboard");
+          window.location.href = "/dashboard";
         }
       } else {
         toast.error(data.message);
@@ -70,7 +85,7 @@ export default function LoginPage() {
         },
         body: JSON.stringify({ branchId: selectedBranchId }),
       });
-      router.push("/dashboard");
+      window.location.href = "/dashboard";
     } catch (error) {
       toast.error("Failed to select branch");
       setLoading(false);
@@ -78,7 +93,7 @@ export default function LoginPage() {
   };
 
   const skipBranchSelection = () => {
-    router.push("/dashboard");
+    window.location.href = "/dashboard";
   };
 
   return (
@@ -92,7 +107,6 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label className="mb-2 block text-sm font-medium">Email</label>
-
               <input
                 type="email"
                 name="email"
@@ -105,7 +119,6 @@ export default function LoginPage() {
 
             <div>
               <label className="mb-2 block text-sm font-medium">Password</label>
-
               <input
                 type="password"
                 name="password"
@@ -130,16 +143,21 @@ export default function LoginPage() {
         </div>
       </main>
 
-      <BottomSheet open={openBranchSheet} onClose={() => setOpenBranchSheet(false)}>
+      <BottomSheet
+        open={openBranchSheet}
+        onClose={() => setOpenBranchSheet(false)}
+      >
         <div className="p-4">
           <h2 className="text-xl font-bold mb-1">Select Branch</h2>
-          <p className="text-sm text-slate-500 mb-6">Choose a branch to view its dashboard</p>
+          <p className="text-sm text-slate-500 mb-6">
+            Choose a branch to view its dashboard
+          </p>
 
           <div className="space-y-3 mb-8 max-h-60 overflow-y-auto">
             {branches.map((branch) => (
-              <label 
-                key={branch._id} 
-                className={`flex items-center gap-3 p-4 border rounded-xl cursor-pointer transition ${selectedBranchId === branch._id ? 'border-blue-600 bg-blue-50' : 'border-slate-200 bg-white'}`}
+              <label
+                key={branch._id}
+                className={`flex items-center gap-3 p-4 border rounded-xl cursor-pointer transition ${selectedBranchId === branch._id ? "border-blue-600 bg-blue-50" : "border-slate-200 bg-white"}`}
               >
                 <input
                   type="radio"
@@ -149,19 +167,21 @@ export default function LoginPage() {
                   onChange={(e) => setSelectedBranchId(e.target.value)}
                   className="w-5 h-5 text-blue-600 focus:ring-blue-500 border-slate-300"
                 />
-                <span className="font-medium text-slate-900">{branch.name}</span>
+                <span className="font-medium text-slate-900">
+                  {branch.name}
+                </span>
               </label>
             ))}
           </div>
 
           <div className="flex flex-col gap-3">
-            <Button 
-              onClick={handleBranchSelection} 
+            <Button
+              onClick={handleBranchSelection}
               disabled={loading || !selectedBranchId}
             >
               {loading ? "Continuing..." : "Continue"}
             </Button>
-            <button 
+            <button
               onClick={skipBranchSelection}
               className="text-slate-500 font-medium py-3 hover:text-slate-700 transition"
             >

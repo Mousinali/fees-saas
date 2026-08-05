@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import BottomSheet from "@/components/ui/BottomSheet";
 import toast from "react-hot-toast";
 
@@ -13,7 +14,6 @@ interface Batch {
   _id: string;
   courseId: Course;
   name: string;
-  defaultFee: number;
   status: string;
 }
 
@@ -23,40 +23,33 @@ export default function BatchesPage() {
   const [formData, setFormData] = useState({
     courseId: "",
     name: "",
-    defaultFee: 0,
     status: "active",
   });
 
   const [saving, setSaving] = useState(false);
-  const [batches, setBatches] = useState<Batch[]>([]);
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [loading, setLoading] = useState(true);
+  const fetchCourses = async () => {
+    const res = await fetch("/api/courses");
+    const data = await res.json();
+    if (data.success) return data.data as Course[];
+    throw new Error("Failed to load courses");
+  };
 
-  async function fetchCourses() {
-    try {
-      const res = await fetch("/api/courses");
-      const data = await res.json();
-      if (data.success) {
-        setCourses(data.data);
-      }
-    } catch (error) {
-      console.error(error);
-    }
-  }
+  const { data: courses = [] } = useQuery({
+    queryKey: ['courses'],
+    queryFn: fetchCourses,
+  });
 
-  async function fetchBatches() {
-    try {
-      const res = await fetch("/api/batches");
-      const data = await res.json();
-      if (data.success) {
-        setBatches(data.data);
-      }
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const fetchBatches = async () => {
+    const res = await fetch("/api/batches");
+    const data = await res.json();
+    if (data.success) return data.data as Batch[];
+    throw new Error("Failed to load batches");
+  };
+
+  const { data: batches = [], isLoading: loading, refetch: refetchBatches } = useQuery({
+    queryKey: ['batches'],
+    queryFn: fetchBatches,
+  });
 
   async function saveBatch() {
     if (!formData.courseId) {
@@ -85,11 +78,10 @@ export default function BatchesPage() {
       setFormData({
         courseId: "",
         name: "",
-        defaultFee: 0,
         status: "active",
       });
       setOpenSheet(false);
-      fetchBatches();
+      refetchBatches();
     } catch (error) {
       console.error(error);
       toast.error("Something went wrong.");
@@ -127,12 +119,11 @@ export default function BatchesPage() {
       setFormData({
         courseId: "",
         name: "",
-        defaultFee: 0,
         status: "active",
       });
       setOpenSheet(false);
       setEditingBatch(null);
-      fetchBatches();
+      refetchBatches();
     } catch (error) {
       console.error(error);
       toast.error("Something went wrong.");
@@ -141,10 +132,7 @@ export default function BatchesPage() {
     }
   }
 
-  useEffect(() => {
-    fetchCourses();
-    fetchBatches();
-  }, []);
+  // Data fetching is handled by useQuery
 
   if (loading) {
     return <p>Loading...</p>;
@@ -158,7 +146,6 @@ export default function BatchesPage() {
           setFormData({
             courseId: courses.length > 0 ? courses[0]._id : "",
             name: "",
-            defaultFee: 0,
             status: "active",
           });
           setOpenSheet(true);
@@ -184,8 +171,6 @@ export default function BatchesPage() {
                 <h2 className="text-[16px] font-semibold text-slate-800 truncate">{batch.name}</h2>
                 <div className="mt-1 flex items-center gap-2 text-[13px] text-slate-500">
                   <span className="truncate max-w-[120px]">{batch.courseId?.name || "Unknown"}</span>
-                  <span className="text-slate-300">•</span>
-                  <span className="text-slate-700 font-medium">₹{batch.defaultFee}</span>
                 </div>
                 <div className="mt-3">
                   <span
@@ -206,7 +191,6 @@ export default function BatchesPage() {
                   setFormData({
                     courseId: batch.courseId?._id || "",
                     name: batch.name,
-                    defaultFee: batch.defaultFee,
                     status: batch.status,
                   });
                   setOpenSheet(true);
@@ -266,24 +250,7 @@ export default function BatchesPage() {
             />
           </div>
 
-          <div>
-            <label className="mb-2 block text-sm font-medium">
-              Batch Fee
-            </label>
-            <input
-              type="number"
-              min="0"
-              value={formData.defaultFee ?? ""}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  defaultFee: e.target.value ? Number(e.target.value) : 0,
-                })
-              }
-              placeholder="Enter batch fee"
-              className="h-12 w-full rounded-xl border border-slate-300 px-4 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-            />
-          </div>
+
 
           <div className="flex items-center justify-between rounded-xl border border-slate-200 p-4">
             <div>

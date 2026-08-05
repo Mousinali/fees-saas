@@ -7,8 +7,6 @@ export interface IBatch extends Document {
 
   name: string;
 
-  defaultFee: number;
-
   status: "active" | "inactive";
 
   createdAt: Date;
@@ -37,12 +35,6 @@ const BatchSchema = new Schema<IBatch>(
       type: String,
       required: true,
       trim: true,
-    },
-
-    defaultFee: {
-      type: Number,
-      required: true,
-      default: 0,
     },
 
     status: {

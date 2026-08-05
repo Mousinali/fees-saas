@@ -1,4 +1,5 @@
 import MobileLayout from "@/components/layout/MobileLayout";
+import ReactQueryProvider from "@/components/providers/ReactQueryProvider";
 
 export default function AppLayout({
   children,
@@ -6,8 +7,8 @@ export default function AppLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <MobileLayout>
-      {children}
-    </MobileLayout>
+    <ReactQueryProvider>
+      <MobileLayout>{children}</MobileLayout>
+    </ReactQueryProvider>
   );
 }

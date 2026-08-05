@@ -14,4 +14,5 @@ export const StudentSchema = z.object({
   gender: z.enum(["male", "female", "other"]).optional(),
   dateOfBirth: z.coerce.date().optional(),
   customFee: z.union([z.coerce.number().min(0), z.literal(""), z.null()]).optional().transform(e => (e === "" || e === null) ? undefined : e),
+  isEmiEnrolled: z.boolean().optional().default(false),
 });

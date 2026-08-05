@@ -40,7 +40,7 @@ export async function GET(
 
     const { id } = await params;
     const student = await Student.findOne({ _id: id, ownerId })
-      .populate("courseId", "name")
+      .populate("courseId", "name defaultFee isEmiAvailable emiType emiDuration")
       .populate("batchId", "name");
 
     if (!student) {

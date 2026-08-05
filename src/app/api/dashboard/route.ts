@@ -43,17 +43,17 @@ export async function GET(request: NextRequest) {
     // 2. Total Active Batches
     const totalBatches = await Batch.countDocuments({ ...query, status: "active" });
 
-    // 3. Total Revenue (Current Month)
+    // 3. Total Revenue (All-Time) & Monthly Revenue
     const now = new Date();
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
 
-    const paymentsThisMonth = await Payment.find({
-      ...query,
-      month: currentMonth,
-      year: currentYear,
-    });
-    const monthlyRevenue = paymentsThisMonth.reduce((acc, curr) => acc + curr.amount, 0);
+    const allPayments = await Payment.find(query);
+    const totalRevenue = allPayments.reduce((acc, curr) => acc + curr.amount, 0);
+
+    const monthlyRevenue = allPayments
+      .filter(p => p.month === currentMonth && p.year === currentYear)
+      .reduce((acc, curr) => acc + curr.amount, 0);
 
     // 4. Recent Payments (Latest 5)
     const recentPayments = await Payment.find(query)
@@ -67,6 +67,7 @@ export async function GET(request: NextRequest) {
       data: {
         totalStudents,
         totalBatches,
+        totalRevenue,
         monthlyRevenue,
         recentPayments,
       },

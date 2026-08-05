@@ -13,6 +13,8 @@ export interface IUser extends Document {
 
   profileImage?: string;
 
+  referredBy?: string;
+
   isVerified: boolean;
   isBlocked: boolean;
 
@@ -22,6 +24,9 @@ export interface IUser extends Document {
   invoiceSettings?: {
     themeColor?: string;
     customNote?: string;
+    logoUrl?: string;
+    address?: string;
+    phone?: string;
   };
 
   createdAt: Date;
@@ -79,6 +84,12 @@ const UserSchema = new Schema<IUser>(
       default: "",
     },
 
+    referredBy: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
     isVerified: {
       type: Boolean,
       default: false,
@@ -102,6 +113,9 @@ const UserSchema = new Schema<IUser>(
     invoiceSettings: {
       themeColor: { type: String, default: "#1d4ed8" }, // default blue-700
       customNote: { type: String, default: "Thank you for your payment!" },
+      logoUrl: { type: String, default: "" },
+      address: { type: String, default: "" },
+      phone: { type: String, default: "" },
     },
   },
   {

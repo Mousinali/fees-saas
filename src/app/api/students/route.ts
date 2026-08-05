@@ -130,8 +130,8 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit;
 
     const students = await Student.find(query)
-      .populate("courseId", "name")
-      .populate("batchId", "name defaultFee")
+      .populate("courseId", "name defaultFee isEmiAvailable emiType emiDuration")
+      .populate("batchId", "name")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);

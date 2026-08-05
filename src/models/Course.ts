@@ -6,6 +6,13 @@ export interface ICourse extends Document {
 
   name: string;
   description?: string;
+  duration?: string;
+  defaultFee: number;
+  feeType?: "monthly" | "total";
+
+  isEmiAvailable?: boolean;
+  emiType?: "monthly" | "quarterly" | "yearly";
+  emiDuration?: number;
 
   status: "active" | "inactive";
 
@@ -34,6 +41,37 @@ const CourseSchema = new Schema<ICourse>(
     description: {
       type: String,
       default: "",
+    },
+
+    duration: {
+      type: String,
+      default: "",
+    },
+
+    defaultFee: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
+
+    feeType: {
+      type: String,
+      enum: ["monthly", "total"],
+      default: "total",
+    },
+
+    isEmiAvailable: {
+      type: Boolean,
+      default: false,
+    },
+
+    emiType: {
+      type: String,
+      enum: ["monthly", "quarterly", "yearly"],
+    },
+
+    emiDuration: {
+      type: Number,
     },
 
     status: {

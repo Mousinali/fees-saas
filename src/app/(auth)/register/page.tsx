@@ -14,6 +14,7 @@ export default function RegisterPage() {
     coachingName: "",
     email: "",
     phone: "",
+    referredBy: "",
     password: "",
     confirmPassword: "",
   });
@@ -48,6 +49,11 @@ export default function RegisterPage() {
     
     if (formData.password !== formData.confirmPassword) {
       toast.error("Passwords do not match");
+      return;
+    }
+
+    if (formData.phone && formData.phone.length > 10) {
+      toast.error("Phone number must not exceed 10 digits");
       return;
     }
 
@@ -213,11 +219,27 @@ export default function RegisterPage() {
             </label>
             <input
               type="tel"
+              maxLength={10}
               name="phone"
               required
               value={formData.phone}
               onChange={handleChange}
               placeholder="Enter phone number"
+              className="h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-blue-600"
+            />
+          </div>
+
+          {/* Referred By */}
+          <div>
+            <label className="mb-2 block text-sm font-medium">
+              Referred By (Optional)
+            </label>
+            <input
+              type="text"
+              name="referredBy"
+              value={formData.referredBy}
+              onChange={handleChange}
+              placeholder="Enter referrer name or code"
               className="h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-blue-600"
             />
           </div>

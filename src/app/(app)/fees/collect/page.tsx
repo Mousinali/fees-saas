@@ -3,21 +3,31 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface Student {
   _id: string;
   fullName: string;
   customFee?: number;
+  isEmiEnrolled?: boolean;
   batchId: {
     _id: string;
     name: string;
+  };
+  courseId: {
+    _id: string;
+    name: string;
     defaultFee: number;
+    isEmiAvailable?: boolean;
+    emiType?: string;
+    emiDuration?: number;
   };
   balance?: number;
 }
 
 export default function CollectFeesPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   
   const [students, setStudents] = useState<Student[]>([]);
   const [accountType, setAccountType] = useState<"teacher" | "coaching_center">("teacher");
@@ -29,17 +39,25 @@ export default function CollectFeesPage() {
     feeOption: string;
     amount: number | "";
     expectedFee: number;
+    monthlyFee: number;
     isAdvance: boolean;
     paymentMethod: string;
     message: string;
+    month: number;
+    year: number;
+    emiInstallments: number;
   }>({
     studentId: "",
     feeOption: "Monthly",
     amount: "",
     expectedFee: 0,
+    monthlyFee: 0,
     isAdvance: false,
     paymentMethod: "cash",
     message: "",
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear(),
+    emiInstallments: 1,
   });
 
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
@@ -78,7 +96,31 @@ export default function CollectFeesPage() {
         if (meData.success) setAccountType(meData.data.accountType);
 
         const studentsData = await studentsRes.json();
-        if (studentsData.success) setStudents(studentsData.data);
+        if (studentsData.success) {
+          const fetchedStudents = studentsData.data;
+          setStudents(fetchedStudents);
+          
+          // Check URL parameters
+          const params = new URLSearchParams(window.location.search);
+          const urlStudentId = params.get("studentId");
+          const urlMonth = params.get("month");
+          const urlYear = params.get("year");
+          
+          let initialStudent = null;
+          if (urlStudentId) {
+            initialStudent = fetchedStudents.find((s: Student) => s._id === urlStudentId);
+            if (initialStudent) {
+              setSelectedStudent(initialStudent);
+            }
+          }
+          
+          setFormData(prev => ({
+            ...prev,
+            studentId: initialStudent ? initialStudent._id : prev.studentId,
+            month: urlMonth ? parseInt(urlMonth) : prev.month,
+            year: urlYear ? parseInt(urlYear) : prev.year,
+          }));
+        }
       } catch (error) {
         console.error(error);
         toast.error("Failed to load data");
@@ -94,36 +136,48 @@ export default function CollectFeesPage() {
     if (!selectedStudent) return;
 
     const hasCustomFee = selectedStudent.customFee !== undefined && selectedStudent.customFee !== null && selectedStudent.customFee !== ("" as any) && selectedStudent.customFee !== 0;
-    const baseFee = hasCustomFee ? Number(selectedStudent.customFee) : (selectedStudent.batchId?.defaultFee || 0);
+    const baseFee = hasCustomFee ? Number(selectedStudent.customFee) : (selectedStudent.courseId?.defaultFee || 0);
     
     let multiplier = 1;
-    switch (formData.feeOption) {
-      case "Quarterly":
-        multiplier = 3;
-        break;
-      case "6 Month":
-        multiplier = 6;
-        break;
-      case "Annually":
-        multiplier = 12;
-        break;
-      case "Monthly":
-      case "EMI":
-      default:
-        multiplier = 1;
-        break;
+    let expectedFee = 0;
+    let monthlyFee = baseFee;
+    
+    if (formData.feeOption === "EMI" && selectedStudent.courseId?.isEmiAvailable && selectedStudent.courseId?.emiDuration) {
+      const emiPerInstallment = baseFee / selectedStudent.courseId.emiDuration;
+      expectedFee = emiPerInstallment * formData.emiInstallments;
+      monthlyFee = emiPerInstallment;
+    } else {
+      switch (formData.feeOption) {
+        case "Quarterly":
+          multiplier = 3;
+          break;
+        case "6 Month":
+          multiplier = 6;
+          break;
+        case "Annually":
+          multiplier = 12;
+          break;
+        case "Monthly":
+        case "EMI":
+        default:
+          multiplier = 1;
+          break;
+      }
+      expectedFee = baseFee * multiplier;
+      monthlyFee = baseFee;
     }
 
-    const expectedFee = baseFee * multiplier;
     const balance = selectedStudent.balance || 0;
-    const payableAmount = Math.max(0, expectedFee - balance);
+    // ensure we don't end up with long decimal places
+    const payableAmount = Math.max(0, Math.round((expectedFee - balance) * 100) / 100);
 
     setFormData((prev) => ({
       ...prev,
       amount: payableAmount,
       expectedFee: expectedFee,
+      monthlyFee: monthlyFee,
     }));
-  }, [selectedStudent, formData.feeOption]);
+  }, [selectedStudent, formData.feeOption, formData.emiInstallments]);
 
   const handleStudentSelect = (student: Student) => {
     setSelectedStudent(student);
@@ -151,6 +205,8 @@ export default function CollectFeesPage() {
       if (!res.ok) throw new Error(data.message);
 
       toast.success("Payment collected successfully");
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
+      queryClient.invalidateQueries({ queryKey: ['students'] }); // Also invalidate students since their balance/status might have changed
       router.push("/fees");
     } catch (error: any) {
       console.error(error);
@@ -164,7 +220,7 @@ export default function CollectFeesPage() {
 
   const feeOptions = accountType === "coaching_center" 
     ? ["Monthly", "Quarterly", "Annually", "EMI"]
-    : ["Monthly", "Quarterly", "6 Month"];
+    : ["Monthly", "Quarterly", "6 Month", "EMI"];
 
   return (
     <div className="pb-32 px-4 pt-6 max-w-lg mx-auto">
@@ -200,7 +256,14 @@ export default function CollectFeesPage() {
                 </div>
                 <div className="max-h-60 overflow-y-auto p-1">
                   {filteredStudents.length === 0 ? (
-                    <div className="p-3 text-center text-sm text-slate-500">No students found</div>
+                    <div className="p-4 text-center text-sm text-slate-500 flex flex-col items-center justify-center font-medium">
+                      <img 
+                        src="/images/no-student-found.svg" 
+                        alt="No students found" 
+                        className="h-16 object-contain mb-2 opacity-80"
+                      />
+                      No students found
+                    </div>
                   ) : (
                     filteredStudents.map((student) => (
                       <div
@@ -220,7 +283,7 @@ export default function CollectFeesPage() {
 
         {selectedStudent && (() => {
           const hasCustomFee = selectedStudent.customFee !== undefined && selectedStudent.customFee !== null && selectedStudent.customFee !== ("" as any) && selectedStudent.customFee !== 0;
-          const baseFee = hasCustomFee ? Number(selectedStudent.customFee) : (selectedStudent.batchId?.defaultFee || 0);
+          const baseFee = hasCustomFee ? Number(selectedStudent.customFee) : (selectedStudent.courseId?.defaultFee || 0);
           const balance = selectedStudent.balance || 0;
           return (
             <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl mb-2 mt-2">
@@ -256,40 +319,99 @@ export default function CollectFeesPage() {
 
         {selectedStudent && (
           <>
-            <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="mb-2 block text-sm font-semibold text-slate-700">Fee Option *</label>
-            <div className="relative">
-              <select
-                required
-                value={formData.feeOption}
-                onChange={(e) => setFormData({ ...formData, feeOption: e.target.value })}
-                className="h-12 w-full appearance-none rounded-xl border border-slate-200 px-4 pr-10 bg-slate-50 text-slate-700 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-medium"
-              >
-                {feeOptions.map((opt) => (
-                  <option key={opt} value={opt}>{opt}</option>
-                ))}
-              </select>
-              <i className="ri-arrow-down-s-line absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xl"></i>
-            </div>
-          </div>
+            <div className={`grid ${formData.feeOption === "EMI" && selectedStudent.courseId?.isEmiAvailable ? 'grid-cols-3' : 'grid-cols-2'} gap-4`}>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">Fee Option *</label>
+                <div className="relative">
+                  <select
+                    required
+                    value={formData.feeOption}
+                    onChange={(e) => setFormData({ ...formData, feeOption: e.target.value })}
+                    className="h-12 w-full appearance-none rounded-xl border border-slate-200 px-4 pr-10 bg-slate-50 text-slate-700 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-medium"
+                  >
+                    {feeOptions.filter(opt => {
+                      if (opt === "EMI") return selectedStudent.courseId?.isEmiAvailable;
+                      return true;
+                    }).map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                  <i className="ri-arrow-down-s-line absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xl"></i>
+                </div>
+              </div>
 
-          <div>
-            <label className="mb-2 block text-sm font-semibold text-slate-700">Amount (₹) *</label>
-            <div className="relative">
-              <input
-                type="number"
-                required
-                min="0"
-                value={formData.amount}
-                placeholder="0"
-                onChange={(e) => setFormData({ ...formData, amount: e.target.value ? Number(e.target.value) : "" })}
-                className="h-12 w-full rounded-xl border border-slate-200 px-4 pl-8 bg-slate-50 text-slate-900 font-bold focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-              />
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-medium">₹</span>
+              {formData.feeOption === "EMI" && selectedStudent.courseId?.isEmiAvailable && (
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 truncate">Installments *</label>
+                  <div className="relative">
+                    <select
+                      required
+                      value={formData.emiInstallments}
+                      onChange={(e) => setFormData({ ...formData, emiInstallments: parseInt(e.target.value) })}
+                      className="h-12 w-full appearance-none rounded-xl border border-slate-200 px-4 pr-10 bg-slate-50 text-slate-700 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-medium"
+                    >
+                      {Array.from({ length: selectedStudent.courseId?.emiDuration || 1 }, (_, i) => (
+                        <option key={i + 1} value={i + 1}>{i + 1}</option>
+                      ))}
+                    </select>
+                    <i className="ri-arrow-down-s-line absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xl"></i>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700 truncate">Amount (₹) *</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    value={formData.amount}
+                    placeholder="0"
+                    onChange={(e) => setFormData({ ...formData, amount: e.target.value ? Number(e.target.value) : "" })}
+                    className="h-12 w-full rounded-xl border border-slate-200 px-4 pl-8 bg-slate-50 text-slate-900 font-bold focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-medium">₹</span>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+
+            <div className="grid grid-cols-2 gap-4 mt-4">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">Month *</label>
+                <div className="relative">
+                  <select
+                    required
+                    value={formData.month}
+                    onChange={(e) => setFormData({ ...formData, month: parseInt(e.target.value) })}
+                    className="h-12 w-full appearance-none rounded-xl border border-slate-200 px-4 pr-10 bg-slate-50 text-slate-700 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-medium"
+                  >
+                    {Array.from({ length: 12 }, (_, i) => (
+                      <option key={i + 1} value={i + 1}>{new Date(2000, i).toLocaleString('default', { month: 'long' })}</option>
+                    ))}
+                  </select>
+                  <i className="ri-arrow-down-s-line absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xl"></i>
+                </div>
+              </div>
+              
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">Year *</label>
+                <div className="relative">
+                  <select
+                    required
+                    value={formData.year}
+                    onChange={(e) => setFormData({ ...formData, year: parseInt(e.target.value) })}
+                    className="h-12 w-full appearance-none rounded-xl border border-slate-200 px-4 pr-10 bg-slate-50 text-slate-700 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-medium"
+                  >
+                    {Array.from({ length: 5 }, (_, i) => {
+                      const y = new Date().getFullYear() - 2 + i;
+                      return <option key={y} value={y}>{y}</option>
+                    })}
+                  </select>
+                  <i className="ri-arrow-down-s-line absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xl"></i>
+                </div>
+              </div>
+            </div>
 
         <div className="flex items-center gap-3 py-1 bg-slate-50 px-4 rounded-xl border border-slate-100 h-12">
           <input

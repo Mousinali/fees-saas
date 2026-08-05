@@ -20,6 +20,9 @@ export interface IStudent extends Document {
   admissionDate: Date;
   customFee?: number;
   balance: number;
+  
+  isEmiEnrolled?: boolean;
+
   status: "active" | "inactive";
 
   createdAt: Date;
@@ -82,6 +85,10 @@ const StudentSchema = new Schema<IStudent>(
     balance: {
       type: Number,
       default: 0,
+    },
+    isEmiEnrolled: {
+      type: Boolean,
+      default: false,
     },
     status: {
       type: String,

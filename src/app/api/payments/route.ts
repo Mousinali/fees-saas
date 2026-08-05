@@ -52,6 +52,9 @@ export async function POST(request: NextRequest) {
       isAdvance = false,
       message,
       expectedFee,
+      monthlyFee,
+      month,
+      year,
     } = body;
 
     if (!studentId || !batchId || !amount || !feeOption) {
@@ -85,25 +88,99 @@ export async function POST(request: NextRequest) {
 
     const date = new Date();
 
-    const payment = await Payment.create({
-      ownerId,
-      branchId,
-      studentId,
-      batchId,
-      amount,
-      discount,
-      fine,
-      paymentMethod,
-      feeOption,
-      isAdvance,
-      message,
-      month: date.getMonth() + 1,
-      year: date.getFullYear(),
-      receiptNumber,
-      paymentDate: date,
-    });
-
     const expected = expectedFee !== undefined ? Number(expectedFee) : Number(amount);
+    const capPerMonth = monthlyFee !== undefined ? Number(monthlyFee) : expected;
+    
+    const student = await Student.findById(studentId);
+    let pastDue = 0;
+    if (student && student.balance < 0) {
+      pastDue = Math.abs(student.balance);
+    }
+    
+    let remainingAmount = Number(amount);
+    let currentMonth = month ? parseInt(month) : date.getMonth() + 1;
+    let currentYear = year ? parseInt(year) : date.getFullYear();
+    
+    let firstPaymentAmount = capPerMonth;
+    if (pastDue > 0) {
+      firstPaymentAmount += pastDue;
+    }
+    
+    let mainPayment;
+    
+    if (remainingAmount <= firstPaymentAmount || capPerMonth <= 0) {
+      mainPayment = await Payment.create({
+        ownerId,
+        branchId,
+        studentId,
+        batchId,
+        amount: remainingAmount,
+        discount,
+        fine,
+        paymentMethod,
+        feeOption,
+        isAdvance,
+        message,
+        month: currentMonth,
+        year: currentYear,
+        receiptNumber,
+        paymentDate: date,
+      });
+    } else {
+      mainPayment = await Payment.create({
+        ownerId,
+        branchId,
+        studentId,
+        batchId,
+        amount: firstPaymentAmount,
+        discount,
+        fine,
+        paymentMethod,
+        feeOption,
+        isAdvance,
+        message,
+        month: currentMonth,
+        year: currentYear,
+        receiptNumber,
+        paymentDate: date,
+      });
+      
+      remainingAmount -= firstPaymentAmount;
+      
+      while (remainingAmount > 0) {
+        currentMonth++;
+        if (currentMonth > 12) {
+          currentMonth = 1;
+          currentYear++;
+        }
+        
+        let paymentAmount = Math.min(remainingAmount, capPerMonth);
+        
+        nextCount++;
+        const nextReceiptNumber = `RCPT-${prefix}-${new Date().getFullYear()}-${nextCount.toString().padStart(5, "0")}`;
+        
+        await Payment.create({
+          ownerId,
+          branchId,
+          studentId,
+          batchId,
+          amount: paymentAmount,
+          discount: 0,
+          fine: 0,
+          paymentMethod,
+          feeOption,
+          isAdvance: true,
+          message: message ? `${message} (Advance)` : "Advance payment",
+          month: currentMonth,
+          year: currentYear,
+          receiptNumber: nextReceiptNumber,
+          paymentDate: date,
+        });
+        
+        remainingAmount -= paymentAmount;
+      }
+    }
+
     const difference = Number(amount) - expected;
     if (difference !== 0) {
       await Student.findByIdAndUpdate(studentId, { $inc: { balance: difference } });
@@ -113,7 +190,7 @@ export async function POST(request: NextRequest) {
       {
         success: true,
         message: "Payment collected successfully.",
-        data: payment,
+        data: mainPayment,
       },
       { status: 201 }
     );
@@ -155,7 +232,7 @@ export async function GET(request: NextRequest) {
     const payments = await Payment.find(query)
       .populate("studentId", "fullName phone photo")
       .populate("batchId", "name")
-      .populate("ownerId", "invoiceSettings coachingName")
+      .populate("ownerId", "invoiceSettings coachingName profileImage")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);

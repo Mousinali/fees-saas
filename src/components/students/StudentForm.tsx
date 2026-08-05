@@ -5,26 +5,29 @@ import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import imageCompression from "browser-image-compression";
 import BottomSheet from "@/components/ui/BottomSheet";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface Course {
   _id: string;
   name: string;
+  defaultFee: number;
+  isEmiAvailable?: boolean;
 }
 
 interface Batch {
   _id: string;
   name: string;
   courseId: string;
-  defaultFee?: number;
 }
 
 interface StudentFormProps {
-  initialData?: any;
+  initialData?: Record<string, unknown> & { _id?: string, photo?: string, fullName?: string, phone?: string, courseId?: any, batchId?: any, aadhaarNumber?: string, guardianPhone?: string, customFee?: number, status?: string };
   isEdit?: boolean;
 }
 
 export default function StudentForm({ initialData, isEdit }: StudentFormProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [courses, setCourses] = useState<Course[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
   
@@ -38,26 +41,16 @@ export default function StudentForm({ initialData, isEdit }: StudentFormProps) {
     guardianPhone: initialData?.guardianPhone || "",
     customFee: initialData?.customFee || "",
     status: initialData?.status || "active",
+    isEmiEnrolled: initialData?.isEmiEnrolled || false,
   });
 
   const [saving, setSaving] = useState(false);
   
   // Photo upload state
   const [photoSheetOpen, setPhotoSheetOpen] = useState(false);
+  const [fullScreenImage, setFullScreenImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    fetchCourses();
-  }, []);
-
-  useEffect(() => {
-    if (formData.courseId) {
-      fetchBatchesForCourse(formData.courseId);
-    } else {
-      setBatches([]);
-    }
-  }, [formData.courseId]);
 
   async function fetchCourses() {
     try {
@@ -77,13 +70,25 @@ export default function StudentForm({ initialData, isEdit }: StudentFormProps) {
       const data = await res.json();
       if (data.success) {
         // Filter batches by selected course
-        const filtered = data.data.filter((b: any) => b.courseId._id === courseId);
+        const filtered = data.data.filter((b: { courseId: { _id: string } }) => b.courseId._id === courseId);
         setBatches(filtered);
       }
     } catch (error) {
       console.error(error);
     }
   }
+
+  useEffect(() => {
+    fetchCourses();
+  }, []);
+
+  useEffect(() => {
+    if (formData.courseId) {
+      fetchBatchesForCourse(formData.courseId);
+    } else {
+      setBatches([]);
+    }
+  }, [formData.courseId]);
 
   const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -93,18 +98,20 @@ export default function StudentForm({ initialData, isEdit }: StudentFormProps) {
 
     try {
       const options = {
-        maxSizeMB: 0.5,
+        maxSizeMB: 0.1, // Compress to under 100kb
         maxWidthOrHeight: 800,
         useWebWorker: true
       };
       
       const compressedFile = await imageCompression(file, options);
       
-      // Convert to base64
+      // Convert to base64 and upload to Cloudinary
       const reader = new FileReader();
       reader.readAsDataURL(compressedFile);
       reader.onloadend = () => {
-        setFormData({ ...formData, photo: reader.result as string });
+        const base64 = reader.result as string;
+        setFormData({ ...formData, photo: base64 });
+        toast.success("Photo attached successfully!");
       };
     } catch (error) {
       console.error("Error compressing image:", error);
@@ -114,10 +121,21 @@ export default function StudentForm({ initialData, isEdit }: StudentFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (formData.phone && formData.phone.length > 10) {
+      toast.error("Student phone number must not exceed 10 digits");
+      return;
+    }
+
+    if (formData.guardianPhone && formData.guardianPhone.length > 10) {
+      toast.error("Guardian phone number must not exceed 10 digits");
+      return;
+    }
+
     setSaving(true);
     
     try {
-      const url = isEdit ? `/api/students/${initialData._id}` : "/api/students";
+      const url = isEdit ? `/api/students/${initialData?._id}` : "/api/students";
       const method = isEdit ? "PATCH" : "POST";
       
       const res = await fetch(url, {
@@ -137,6 +155,7 @@ export default function StudentForm({ initialData, isEdit }: StudentFormProps) {
       }
 
       toast.success(isEdit ? "Student updated!" : "Student added!");
+      queryClient.invalidateQueries({ queryKey: ['students'] });
       router.push("/students");
       router.refresh();
     } catch (error) {
@@ -223,6 +242,27 @@ export default function StudentForm({ initialData, isEdit }: StudentFormProps) {
           </button>
           
           {formData.photo && (
+            <>
+              <button 
+                type="button"
+                onClick={() => {
+                  setPhotoSheetOpen(false);
+                  setFullScreenImage(formData.photo);
+                }}
+                className="w-full flex items-center gap-3 p-4 rounded-xl border border-slate-200 hover:bg-slate-50 text-left"
+              >
+                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600">
+                  <i className="ri-fullscreen-line text-xl"></i>
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-medium">View Photo</h4>
+                  <p className="text-xs text-slate-500">See current profile photo</p>
+                </div>
+              </button>
+            </>
+          )}
+
+          {formData.photo && (
             <button 
               type="button"
               onClick={() => {
@@ -243,8 +283,7 @@ export default function StudentForm({ initialData, isEdit }: StudentFormProps) {
           <label className="mb-2 block text-[13px] font-semibold text-slate-700 uppercase tracking-wide">
             Student Name *
           </label>
-          <input
-            type="text"
+          <input type="text"
             required
             value={formData.fullName}
             onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
@@ -259,6 +298,7 @@ export default function StudentForm({ initialData, isEdit }: StudentFormProps) {
           </label>
           <input
             type="tel"
+            maxLength={10}
             required
             value={formData.phone}
             onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
@@ -306,18 +346,33 @@ export default function StudentForm({ initialData, isEdit }: StudentFormProps) {
           </div>
         </div>
 
-        {formData.batchId && (
+        {formData.courseId && (
           <div>
             <label className="mb-2 block text-[13px] font-semibold text-slate-700 uppercase tracking-wide">
-              Batch Fee
+              Course Fee
             </label>
             <input
               type="text"
               readOnly
               disabled
-              value={`₹${batches.find(b => b._id === formData.batchId)?.defaultFee || 0}`}
+              value={`₹${courses.find(c => c._id === formData.courseId)?.defaultFee || 0}`}
               className="h-12 w-full rounded-xl border border-slate-200 px-4 bg-slate-100 text-slate-500 cursor-not-allowed"
             />
+          </div>
+        )}
+
+        {formData.courseId && courses.find(c => c._id === formData.courseId)?.isEmiAvailable && (
+          <div className="flex items-center gap-3 py-2 bg-indigo-50/50 px-4 rounded-xl border border-indigo-100 h-14">
+            <input
+              type="checkbox"
+              id="isEmiEnrolled"
+              checked={formData.isEmiEnrolled}
+              onChange={(e) => setFormData({ ...formData, isEmiEnrolled: e.target.checked })}
+              className="h-5 w-5 rounded-md border-indigo-300 text-indigo-600 focus:ring-indigo-600 transition-colors cursor-pointer"
+            />
+            <label htmlFor="isEmiEnrolled" className="text-sm font-semibold text-indigo-900 cursor-pointer select-none">
+              Enroll in EMI Plan
+            </label>
           </div>
         )}
 
@@ -354,6 +409,7 @@ export default function StudentForm({ initialData, isEdit }: StudentFormProps) {
           </label>
           <input
             type="tel"
+            maxLength={10}
             required
             value={formData.guardianPhone}
             onChange={(e) => setFormData({ ...formData, guardianPhone: e.target.value })}
@@ -388,6 +444,30 @@ export default function StudentForm({ initialData, isEdit }: StudentFormProps) {
           {saving ? "Saving..." : isEdit ? "Update Student" : "Save Student"}
         </button>
       </div>
+
+      {/* Full Screen Image Viewer */}
+      {fullScreenImage && (
+        <div 
+          className="fixed inset-0 z-[100] bg-black/90 flex flex-col items-center justify-center backdrop-blur-sm"
+          onClick={() => setFullScreenImage(null)}
+        >
+          <div className="absolute top-4 right-4 flex gap-4">
+            <button 
+              type="button"
+              className="w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors"
+              onClick={() => setFullScreenImage(null)}
+            >
+              <i className="ri-close-line text-xl"></i>
+            </button>
+          </div>
+          <img 
+            src={fullScreenImage} 
+            alt="Full screen view" 
+            className="max-w-full max-h-[80vh] object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </form>
   );
 }

@@ -1,8 +1,11 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import "remixicon/fonts/remixicon.css";
 import { Toaster } from "react-hot-toast";
+import { cookies } from "next/headers";
+import jwt from "jsonwebtoken";
+import DeviceEnforcer from "@/components/DeviceEnforcer";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -19,11 +22,35 @@ export const metadata: Metadata = {
   description: "Institute ERP & Fees Management",
 };
 
-export default function RootLayout({
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  minimumScale: 1,
+  userScalable: false,
+};
+
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Extract role from cookie
+  const cookieStore = await cookies();
+  const token = cookieStore.get("token")?.value;
+  let role: string | null = null;
+  
+  if (token) {
+    try {
+      const decodedPayload = jwt.decode(token) as any;
+      if (decodedPayload && decodedPayload.role) {
+        role = decodedPayload.role;
+      }
+    } catch (error) {
+      // Ignore decode errors
+    }
+  }
+
   return (
     <html
       lang="en"
@@ -31,21 +58,12 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-dvh" suppressHydrationWarning>
-        <Toaster position="top-center" />
-        <div className="min-[992px]:hidden flex flex-col h-full">
-          {children}
-        </div>
-        <div className="hidden min-[992px]:flex fixed inset-0 z-[9999] bg-slate-50 items-center justify-center p-4">
-          <div className="text-center max-w-md bg-white p-8 rounded-2xl shadow-xl border border-slate-100">
-            <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
-              <i className="ri-smartphone-line text-3xl"></i>
-            </div>
-            <h2 className="text-xl font-bold text-slate-800 mb-2">Mobile App Only</h2>
-            <p className="text-slate-500">
-              This is a mobile application. Please open it on a mobile device or reduce your browser window size (below 992px) to continue.
-            </p>
+        <Toaster position="top-center" toastOptions={{ className: "!z-[9999999]" }} />
+        <DeviceEnforcer role={role}>
+          <div className="flex flex-col h-full">
+            {children}
           </div>
-        </div>
+        </DeviceEnforcer>
       </body>
     </html>
   );

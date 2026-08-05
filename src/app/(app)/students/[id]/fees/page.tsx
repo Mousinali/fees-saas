@@ -86,10 +86,18 @@ export default function FeesStructurePage({ params }: { params: Promise<{ id: st
 
   if (!student) return null;
 
-  // Helper to check if a specific month is paid
   const getPaymentForMonth = (monthIndex: number) => {
-    // month is stored as 1-12 in the DB, monthIndex is 0-11
-    return payments.find(p => p.month === monthIndex + 1 && p.year === currentYear);
+    const monthPayments = payments.filter(p => p.month === monthIndex + 1 && p.year === currentYear);
+    if (monthPayments.length === 0) return undefined;
+    
+    // Sum up the amounts if there are multiple payments for the same month
+    const totalAmount = monthPayments.reduce((sum, p) => sum + p.amount, 0);
+    // Return a composite payment object with the total amount and the latest payment date
+    return {
+      ...monthPayments[0],
+      amount: totalAmount,
+      paymentDate: monthPayments[monthPayments.length - 1].paymentDate,
+    };
   };
 
   return (
@@ -172,7 +180,7 @@ export default function FeesStructurePage({ params }: { params: Promise<{ id: st
                 ) : (
                   <div className="mt-1">
                     <Link
-                      href={`/fees/collect?studentId=${studentId}`}
+                      href={`/fees/collect?studentId=${studentId}&month=${index + 1}&year=${currentYear}`}
                       className="inline-block px-3 py-1.5 bg-slate-100 hover:bg-indigo-50 text-indigo-600 hover:text-indigo-700 text-xs font-bold rounded-lg transition-colors"
                     >
                       Collect Fee

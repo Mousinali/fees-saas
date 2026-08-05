@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
       email,
       phone,
       password,
+      referredBy,
       branches = [],
     } = validatedData;
 
@@ -50,6 +51,7 @@ export async function POST(request: NextRequest) {
       email,
       phone,
       password: hashedPassword,
+      referredBy: referredBy || "",
       branches: accountType === "coaching_center" ? branches.map(name => ({ name })) : [],
     });
 

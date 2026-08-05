@@ -1,11 +1,12 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
+import { useNotification } from "@/context/NotificationContext";
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "Dashboard",
-  "/students": "Students",
-  "/fees": "Fees",
+  "/students": "Students List",
+  "/fees": "Fees List",
   "/fees/collect": "Collect Fees",
   "/reports": "Reports",
   "/profile": "Profile Settings",
@@ -16,6 +17,7 @@ const pageTitles: Record<string, string> = {
 export default function AppHeader() {
   const pathname = usePathname();
   const router = useRouter();
+  const { unreadCount, openDrawer } = useNotification();
 
   let title = pageTitles[pathname] || "Fees Management";
   
@@ -61,9 +63,17 @@ export default function AppHeader() {
             </button>
           </>
         )}
-        <button className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-slate-100 text-slate-700">
-          <i className="ri-notification-3-line text-xl"></i>
-        </button>
+        <div className="relative">
+          <button 
+            onClick={openDrawer}
+            className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-slate-100 text-slate-700 relative"
+          >
+            <i className="ri-notification-3-line text-xl"></i>
+            {unreadCount > 0 && (
+              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
+            )}
+          </button>
+        </div>
       </div>
     </header>
   );

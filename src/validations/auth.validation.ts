@@ -23,6 +23,8 @@ export const RegisterSchema = z
       .string()
       .min(6),
 
+    referredBy: z.string().optional(),
+
     branches: z.array(z.string().min(1, "Branch name cannot be empty")).optional(),
   })
   .refine((data) => data.password === data.confirmPassword, {

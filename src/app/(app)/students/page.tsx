@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
@@ -17,17 +18,10 @@ interface Student {
 
 export default function StudentsPage() {
   const router = useRouter();
-  const [students, setStudents] = useState<Student[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [courseId, setCourseId] = useState("");
   const [status, setStatus] = useState("");
-  const [courses, setCourses] = useState<{_id: string, name: string}[]>([]);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   useEffect(() => {
@@ -37,63 +31,55 @@ export default function StudentsPage() {
     return () => clearTimeout(handler);
   }, [search]);
 
-  useEffect(() => {
-    async function fetchCourses() {
-      try {
-        const res = await fetch("/api/courses");
-        const data = await res.json();
-        if (data.success) {
-          setCourses(data.data);
-        }
-      } catch (error) {
-        console.error("Error fetching courses:", error);
-      }
-    }
-    fetchCourses();
-  }, []);
+  const fetchCourses = async () => {
+    const res = await fetch("/api/courses");
+    const data = await res.json();
+    if (data.success) return data.data;
+    throw new Error("Failed to load courses");
+  };
 
-  async function fetchStudents(pageNum = 1, append = false, currentSearch = "", currentCourseId = "", currentStatus = "") {
-    try {
-      if (append) setLoadingMore(true);
-      else setLoading(true);
+  const { data: courses = [] } = useQuery({
+    queryKey: ['courses'],
+    queryFn: fetchCourses,
+  });
 
-      const params = new URLSearchParams({
-        page: pageNum.toString(),
-        limit: "5",
-      });
-      if (currentSearch) params.append("search", currentSearch);
-      if (currentCourseId) params.append("courseId", currentCourseId);
-      if (currentStatus) params.append("status", currentStatus);
+  const fetchStudents = async ({ pageParam = 1 }) => {
+    const params = new URLSearchParams({
+      page: pageParam.toString(),
+      limit: "5",
+    });
+    if (debouncedSearch) params.append("search", debouncedSearch);
+    if (courseId) params.append("courseId", courseId);
+    if (status) params.append("status", status);
 
-      const res = await fetch(`/api/students?${params.toString()}`);
-      const data = await res.json();
-      if (data.success) {
-        if (append) {
-          setStudents((prev) => [...prev, ...data.data]);
-        } else {
-          setStudents(data.data);
-        }
-        setHasMore(data.data.length === 5);
-      }
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-      setLoadingMore(false);
-    }
-  }
+    const res = await fetch(`/api/students?${params.toString()}`);
+    const data = await res.json();
+    if (data.success) return data.data as Student[];
+    throw new Error("Failed to load students");
+  };
 
-  useEffect(() => {
-    setPage(1);
-    fetchStudents(1, false, debouncedSearch, courseId, status);
-  }, [debouncedSearch, courseId, status]);
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage: loadingMore,
+    isLoading: loading,
+  } = useInfiniteQuery({
+    queryKey: ['students', debouncedSearch, courseId, status],
+    queryFn: fetchStudents,
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) => {
+      return lastPage.length === 5 ? allPages.length + 1 : undefined;
+    },
+  });
+
+  const students = data?.pages.flat() || [];
+  const hasMore = !!hasNextPage;
 
   const loadMore = useCallback(() => {
     if (loadingMore || !hasMore) return;
-    const nextPage = page + 1;
-    setPage(nextPage);
-    fetchStudents(nextPage, true, debouncedSearch, courseId, status);
-  }, [page, loadingMore, hasMore, debouncedSearch, courseId, status]);
+    fetchNextPage();
+  }, [loadingMore, hasMore, fetchNextPage]);
 
   const observer = useRef<IntersectionObserver | null>(null);
   const lastElementRef = useCallback((node: HTMLDivElement | null) => {
@@ -134,8 +120,13 @@ export default function StudentsPage() {
       {loading ? (
         <p>Loading...</p>
       ) : students.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center">
-          <p className="text-slate-500">
+        <div className="pt-6 text-center flex flex-col items-center justify-center">
+          <img 
+            src="/images/no-student-found.svg" 
+            alt="No students added yet" 
+            className="h-40 object-contain mb-4 opacity-90"
+          />
+          <p className="text-slate-500 font-medium text-sm">
             No students added yet.
           </p>
         </div>
@@ -144,13 +135,13 @@ export default function StudentsPage() {
           <Link 
             key={student._id} 
             href={`/students/${student._id}`}
-            className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-3 hover:border-blue-300 transition-colors"
+            className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-3 hover:border-blue-300 transition-colors shadow-[0_8px_30px_rgba(0,0,0,0.03)]"
           >
             {student.photo ? (
               <img src={student.photo} alt={student.fullName} className="w-12 h-12 rounded-full object-cover border border-slate-100" />
             ) : (
-              <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 border border-slate-200">
-                <i className="ri-user-line text-2xl"></i>
+              <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 border border-slate-200">
+                <i className="ri-user-line text-xl"></i>
               </div>
             )}
             
@@ -204,12 +195,13 @@ export default function StudentsPage() {
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">Course</label>
               <select
+                suppressHydrationWarning
                 value={courseId}
                 onChange={(e) => setCourseId(e.target.value)}
                 className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
               >
                 <option value="">All Courses</option>
-                {courses.map((course) => (
+                {courses.map((course: any) => (
                   <option key={course._id} value={course._id}>
                     {course.name}
                   </option>
@@ -220,6 +212,7 @@ export default function StudentsPage() {
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">Status</label>
               <select
+                suppressHydrationWarning
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
                 className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"

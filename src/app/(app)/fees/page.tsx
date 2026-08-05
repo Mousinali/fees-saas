@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import dayjs from "dayjs";
 import toast from "react-hot-toast";
@@ -19,13 +20,7 @@ interface Payment {
 }
 
 export default function FeesPage() {
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
 
   const formatPaymentMethod = (method: string) => {
     if (!method) return "";
@@ -36,40 +31,37 @@ export default function FeesPage() {
       .join(" ");
   };
 
-  const fetchPayments = useCallback(async (pageNum = 1, append = false) => {
-    try {
-      if (append) setLoadingMore(true);
-      else setLoading(true);
-      
-      const res = await fetch(`/api/payments?page=${pageNum}&limit=5`);
-      const data = await res.json();
-      if (data.success) {
-        if (append) {
-          setPayments(prev => [...prev, ...data.data]);
-        } else {
-          setPayments(data.data);
-        }
-        setHasMore(data.data.length === 5);
-      }
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to load payments");
-    } finally {
-      setLoading(false);
-      setLoadingMore(false);
+  const fetchPayments = async ({ pageParam = 1 }) => {
+    const res = await fetch(`/api/payments?page=${pageParam}&limit=5`);
+    const data = await res.json();
+    if (data.success) {
+      return data.data as Payment[];
     }
-  }, []);
+    throw new Error("Failed to load payments");
+  };
 
-  useEffect(() => {
-    fetchPayments(1, false);
-  }, [fetchPayments]);
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage: loadingMore,
+    isLoading: loading,
+  } = useInfiniteQuery({
+    queryKey: ['payments'],
+    queryFn: fetchPayments,
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) => {
+      return lastPage.length === 5 ? allPages.length + 1 : undefined;
+    },
+  });
+
+  const payments = data?.pages.flat() || [];
+  const hasMore = !!hasNextPage;
 
   const loadMore = useCallback(() => {
     if (loadingMore || !hasMore) return;
-    const nextPage = page + 1;
-    setPage(nextPage);
-    fetchPayments(nextPage, true);
-  }, [page, loadingMore, hasMore, fetchPayments]);
+    fetchNextPage();
+  }, [loadingMore, hasMore, fetchNextPage]);
 
   const observer = useRef<IntersectionObserver | null>(null);
   const lastElementRef = useCallback((node: HTMLDivElement | null) => {

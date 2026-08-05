@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import imageCompression from "browser-image-compression";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import BottomSheet from "@/components/ui/BottomSheet";
 
 type Tab = "menu" | "personal" | "security" | "invoice";
 
@@ -14,6 +16,12 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [photoSheetOpen, setPhotoSheetOpen] = useState(false);
+  const [fullScreenImage, setFullScreenImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
   
   const [user, setUser] = useState<any>(null);
 
@@ -27,41 +35,40 @@ export default function ProfilePage() {
     invoiceSettings: {
       themeColor: "#1d4ed8",
       customNote: "Thank you for your payment!",
+      logoUrl: "",
+      address: "",
+      phone: "",
     },
   });
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { data: meData, isLoading: queryLoading } = useQuery({
+    queryKey: ['auth-me'],
+    queryFn: () => fetch("/api/auth/me").then((res) => res.json()),
+  });
 
   useEffect(() => {
-    async function loadData() {
-      try {
-        const meRes = await fetch("/api/auth/me");
-        const meData = await meRes.json();
-
-        if (meData.success) {
-          setUser(meData.data);
-          setFormData({
-            fullName: meData.data.fullName || "",
-            email: meData.data.email || "",
-            phone: meData.data.phone || "",
-            coachingName: meData.data.coachingName || "",
-            profileImage: meData.data.profileImage || "",
-            password: "",
-            invoiceSettings: meData.data.invoiceSettings || {
-              themeColor: "#1d4ed8",
-              customNote: "Thank you for your payment!",
-            },
-          });
-        }
-      } catch (error) {
-        console.error(error);
-        toast.error("Failed to load profile data");
-      } finally {
-        setLoading(false);
-      }
+    if (meData?.success) {
+      setUser(meData.data);
+      setFormData({
+        fullName: meData.data.fullName || "",
+        email: meData.data.email || "",
+        phone: meData.data.phone || "",
+        coachingName: meData.data.coachingName || "",
+        profileImage: meData.data.profileImage || "",
+        password: "",
+        invoiceSettings: meData.data.invoiceSettings || {
+          themeColor: "#1d4ed8",
+          customNote: "Thank you for your payment!",
+          logoUrl: meData.data.invoiceSettings?.logoUrl || "",
+          address: meData.data.invoiceSettings?.address || "",
+          phone: meData.data.invoiceSettings?.phone || "",
+        },
+      });
+      setLoading(false);
+    } else if (meData && !meData.success) {
+      toast.error("Failed to load profile data");
+      setLoading(false);
     }
-    loadData();
-  }, []);
+  }, [meData]);
 
   const handleLogout = async () => {
     try {
@@ -88,6 +95,7 @@ export default function ProfilePage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setPhotoSheetOpen(false);
     setUploadingPhoto(true);
     const loadingToast = toast.loading("Uploading profile image...");
 
@@ -121,11 +129,79 @@ export default function ProfilePage() {
       toast.error("Something went wrong while uploading", { id: loadingToast });
     } finally {
       setUploadingPhoto(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      if (cameraInputRef.current) cameraInputRef.current.value = "";
+    }
+  };
+
+  const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingLogo(true);
+    const loadingToast = toast.loading("Uploading invoice logo...");
+
+    try {
+      const options = {
+        maxSizeMB: 0.1,
+        maxWidthOrHeight: 400,
+        useWebWorker: true
+      };
+      
+      const compressedFile = await imageCompression(file, options);
+      const base64 = await imageCompression.getDataUrlFromFile(compressedFile);
+
+      setFormData(prev => ({
+        ...prev,
+        invoiceSettings: {
+          ...prev.invoiceSettings,
+          logoUrl: base64
+        }
+      }));
+      
+      toast.success("Logo ready to save. Click 'Save Changes' at the bottom.", { id: loadingToast });
+    } catch (error) {
+      console.error(error);
+      toast.error("Something went wrong while uploading logo", { id: loadingToast });
+    } finally {
+      setUploadingLogo(false);
+      if (logoInputRef.current) logoInputRef.current.value = "";
+    }
+  };
+
+  const handleRemovePhoto = async () => {
+    setPhotoSheetOpen(false);
+    setUploadingPhoto(true);
+    const loadingToast = toast.loading("Removing image...");
+    try {
+      const res = await fetch("/api/auth/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileImage: "" }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success("Profile image removed!", { id: loadingToast });
+        setUser(data.data);
+        setFormData(prev => ({ ...prev, profileImage: "" }));
+      } else {
+        toast.error(data.message || "Failed to remove image", { id: loadingToast });
+      }
+    } catch (error) {
+      toast.error("Something went wrong", { id: loadingToast });
+    } finally {
+      setUploadingPhoto(false);
     }
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (formData.phone && formData.phone.length > 10) {
+      toast.error("Phone number must not exceed 10 digits");
+      return;
+    }
+
     setSaving(true);
     
     const payload = { ...formData };
@@ -224,6 +300,7 @@ export default function ProfilePage() {
                   <label className="mb-1.5 block text-sm font-medium text-slate-700">Phone Number</label>
                   <input
                     type="tel"
+                    maxLength={10}
                     required
                     value={formData.phone}
                     onChange={e => setFormData({ ...formData, phone: e.target.value })}
@@ -258,6 +335,37 @@ export default function ProfilePage() {
                   <h3 className="text-lg font-bold text-slate-800 border-b pb-2 mb-2">Invoice Settings</h3>
                 </div>
                 <div>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Invoice Logo</label>
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-full border border-slate-300 bg-slate-50 flex items-center justify-center overflow-hidden">
+                      {formData.invoiceSettings.logoUrl || formData.profileImage ? (
+                        <img src={formData.invoiceSettings.logoUrl || formData.profileImage} alt="Invoice Logo" className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-xl text-slate-400 font-bold">{formData.coachingName?.charAt(0) || "C"}</span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => logoInputRef.current?.click()}
+                      disabled={uploadingLogo}
+                      className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
+                    >
+                      {uploadingLogo ? "Uploading..." : "Upload Logo"}
+                    </button>
+                    {(formData.invoiceSettings.logoUrl || formData.profileImage) && (
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, invoiceSettings: { ...formData.invoiceSettings, logoUrl: "" } })}
+                        className="text-red-500 text-sm hover:underline font-medium"
+                      >
+                        Remove Logo
+                      </button>
+                    )}
+                  </div>
+                  <input type="file" ref={logoInputRef} className="hidden" accept="image/*" onChange={handleLogoChange} />
+                  <p className="text-xs text-slate-500 mt-2">By default, your profile picture is used as the invoice logo. You can upload a different logo here.</p>
+                </div>
+                <div>
                   <label className="mb-1.5 block text-sm font-medium text-slate-700">Invoice Theme Color</label>
                   <div className="flex items-center gap-3">
                     <input
@@ -282,6 +390,32 @@ export default function ProfilePage() {
                       invoiceSettings: { ...formData.invoiceSettings, customNote: e.target.value } 
                     })}
                     className="w-full rounded-xl border border-slate-300 p-4 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Invoice Address</label>
+                  <textarea
+                    rows={2}
+                    value={formData.invoiceSettings.address}
+                    onChange={e => setFormData({ 
+                      ...formData, 
+                      invoiceSettings: { ...formData.invoiceSettings, address: e.target.value } 
+                    })}
+                    placeholder="Enter the address to display on the invoice"
+                    className="w-full rounded-xl border border-slate-300 p-4 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Invoice Phone Number</label>
+                  <input
+                    type="text"
+                    value={formData.invoiceSettings.phone}
+                    onChange={e => setFormData({ 
+                      ...formData, 
+                      invoiceSettings: { ...formData.invoiceSettings, phone: e.target.value } 
+                    })}
+                    placeholder="e.g. +91 9876543210"
+                    className="h-11 w-full rounded-xl border border-slate-300 px-4 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                   />
                 </div>
               </div>
@@ -321,12 +455,13 @@ export default function ProfilePage() {
           </div>
           <button 
             className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-white text-slate-600 flex items-center justify-center shadow-md border border-slate-100 hover:bg-slate-50 transition"
-            onClick={() => !uploadingPhoto && fileInputRef.current?.click()}
+            onClick={() => !uploadingPhoto && setPhotoSheetOpen(true)}
             disabled={uploadingPhoto}
           >
             <i className="ri-pencil-line text-sm"></i>
           </button>
           <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageChange} />
+          <input type="file" ref={cameraInputRef} className="hidden" accept="image/*" capture="environment" onChange={handleImageChange} />
         </div>
         
         <div className="flex flex-col items-start">
@@ -399,6 +534,95 @@ export default function ProfilePage() {
           <span className="font-medium text-[15px] text-[#F43F5E]">Log Out</span>
         </button>
       </div>
+
+      <BottomSheet
+        open={photoSheetOpen}
+        onClose={() => setPhotoSheetOpen(false)}
+        title="Profile Photo"
+      >
+        <div className="space-y-3">
+          <button 
+            type="button"
+            onClick={() => cameraInputRef.current?.click()}
+            className="w-full flex items-center gap-3 p-4 rounded-xl border border-slate-200 hover:bg-slate-50 text-left"
+          >
+            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+              <i className="ri-camera-line text-xl"></i>
+            </div>
+            <div className="flex-1">
+              <h4 className="font-medium">Take Photo</h4>
+              <p className="text-xs text-slate-500">Use your camera</p>
+            </div>
+          </button>
+          
+          <button 
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full flex items-center gap-3 p-4 rounded-xl border border-slate-200 hover:bg-slate-50 text-left"
+          >
+            <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600">
+              <i className="ri-image-add-line text-xl"></i>
+            </div>
+            <div className="flex-1">
+              <h4 className="font-medium">Upload from Gallery</h4>
+              <p className="text-xs text-slate-500">Choose an existing photo</p>
+            </div>
+          </button>
+          
+          {formData.profileImage && (
+            <>
+              <button 
+                type="button"
+                onClick={() => {
+                  setPhotoSheetOpen(false);
+                  setFullScreenImage(formData.profileImage);
+                }}
+                className="w-full flex items-center gap-3 p-4 rounded-xl border border-slate-200 hover:bg-slate-50 text-left"
+              >
+                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600">
+                  <i className="ri-fullscreen-line text-xl"></i>
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-medium">View Photo</h4>
+                  <p className="text-xs text-slate-500">See current profile photo</p>
+                </div>
+              </button>
+
+              <button 
+                type="button"
+                onClick={handleRemovePhoto}
+                className="w-full flex items-center justify-center gap-2 p-3 text-red-600 font-medium mt-2 hover:bg-red-50 rounded-xl"
+              >
+                <i className="ri-delete-bin-line"></i> Remove Photo
+              </button>
+            </>
+          )}
+        </div>
+      </BottomSheet>
+
+      {/* Full Screen Image Viewer */}
+      {fullScreenImage && (
+        <div 
+          className="fixed inset-0 z-[100] bg-black/90 flex flex-col items-center justify-center backdrop-blur-sm"
+          onClick={() => setFullScreenImage(null)}
+        >
+          <div className="absolute top-4 right-4 flex gap-4">
+            <button 
+              type="button"
+              className="w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors"
+              onClick={() => setFullScreenImage(null)}
+            >
+              <i className="ri-close-line text-xl"></i>
+            </button>
+          </div>
+          <img 
+            src={fullScreenImage} 
+            alt="Full screen view" 
+            className="max-w-full max-h-[80vh] object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }

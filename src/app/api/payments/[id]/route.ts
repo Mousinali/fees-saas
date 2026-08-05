@@ -42,7 +42,7 @@ export async function GET(
     const payment = await Payment.findOne({ _id: id, ownerId })
       .populate("studentId", "fullName phone")
       .populate("batchId", "name")
-      .populate("ownerId", "invoiceSettings coachingName");
+      .populate("ownerId", "invoiceSettings coachingName profileImage");
 
     if (!payment) {
       return NextResponse.json(

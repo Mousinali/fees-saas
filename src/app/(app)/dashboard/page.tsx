@@ -1,53 +1,66 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import dayjs from "dayjs";
 import toast from "react-hot-toast";
+import { useNotification } from "@/context/NotificationContext";
+
+interface Payment {
+  _id: string;
+  paymentDate: string;
+  amount: number;
+  paymentMethod: string;
+  studentId?: {
+    photo?: string;
+    name?: string;
+    fullName?: string;
+  };
+  batchId?: {
+    name?: string;
+  };
+}
 
 interface DashboardData {
   totalStudents: number;
   totalBatches: number;
+  totalRevenue: number;
   monthlyRevenue: number;
-  recentPayments: any[];
+  recentPayments: Payment[];
 }
 
 export default function DashboardPage() {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
   const [showBalance, setShowBalance] = useState(true);
+  const { unreadCount, openDrawer } = useNotification();
+  const fetchDashboardAndUser = async () => {
+    const [dashRes, userRes] = await Promise.all([
+      fetch("/api/dashboard"),
+      fetch("/api/auth/me"),
+    ]);
 
-  async function loadDashboardAndUser() {
-    try {
-      const [dashRes, userRes] = await Promise.all([
-        fetch("/api/dashboard"),
-        fetch("/api/auth/me"),
-      ]);
+    const dashResult = await dashRes.json();
+    const userResult = await userRes.json();
 
-      const dashResult = await dashRes.json();
-      const userResult = await userRes.json();
-
-      if (dashResult.success) {
-        setData(dashResult.data);
-      } else {
-        toast.error("Failed to load dashboard data");
-      }
-
-      if (userResult.success) {
-        setUser(userResult.data);
-      }
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to load dashboard data");
-    } finally {
-      setLoading(false);
+    if (!dashResult.success || !userResult.success) {
+      throw new Error("Failed to load dashboard data");
     }
+
+    return { dashboard: dashResult.data, user: userResult.data };
+  };
+
+  const { data: queryData, isLoading, error } = useQuery({
+    queryKey: ['dashboard'],
+    queryFn: fetchDashboardAndUser,
+  });
+
+  if (error) {
+    toast.error("Failed to load dashboard data");
   }
 
-  useEffect(() => {
-    loadDashboardAndUser();
-  }, []);
+  const data: DashboardData | null = queryData?.dashboard || null;
+  const user = queryData?.user || null;
+  const loading = isLoading;
 
   const getGreeting = () => {
     const hour = dayjs().hour();
@@ -91,9 +104,14 @@ export default function DashboardPage() {
 
         {/* Notification Bell */}
         <div className="relative">
-          <button className="flex h-12 w-12 items-center justify-center rounded-full  text-slate-700 transition relative">
+          <button 
+            onClick={openDrawer}
+            className="flex h-10 w-10 items-center justify-center rounded-full text-slate-700 transition relative hover:bg-slate-100"
+          >
             <i className="ri-notification-3-line text-xl"></i>
-            <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
+            {unreadCount > 0 && (
+              <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-slate-50"></span>
+            )}
           </button>
         </div>
       </div>
@@ -139,13 +157,18 @@ export default function DashboardPage() {
                   ></i>
                 </button>
               </div>
-              <div className="mt-2">
+              <div className="mt-2 flex flex-col">
                 <h2 className="text-2xl leading-none font-bold text-slate-900 tracking-tight">
                   ₹{' '}
                   {showBalance
-                    ? data?.monthlyRevenue.toLocaleString() || "0"
+                    ? data?.totalRevenue.toLocaleString() || "0"
                     : "••••••"}
                 </h2>
+                {showBalance && data?.monthlyRevenue !== undefined && (
+                  <p className="text-xs text-indigo-600 font-medium mt-1.5">
+                    +₹{data.monthlyRevenue.toLocaleString()} this month
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -240,7 +263,7 @@ export default function DashboardPage() {
                               className="w-full h-full object-cover"
                             />
                           ) : (
-                            payment.studentId?.fullName.charAt(0).toUpperCase()
+                            payment.studentId?.fullName?.charAt(0).toUpperCase() || "?"
                           )}
                         </div>
                         <div>
@@ -265,8 +288,12 @@ export default function DashboardPage() {
                 })}
               </div>
             ) : (
-              <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
-                <i className="ri-wallet-3-line text-4xl text-slate-300 mb-2 block"></i>
+              <div className="pt-6 text-center flex flex-col items-center justify-center">
+                <img 
+                  src="/images/no-transaction.svg" 
+                  alt="No recent transactions" 
+                  className="h-40 object-contain mb-4 opacity-90"
+                />
                 <p className="text-slate-500 font-medium text-sm">
                   No recent transactions.
                 </p>

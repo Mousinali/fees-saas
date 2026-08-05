@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import BottomSheet from "@/components/ui/BottomSheet";
 import toast from "react-hot-toast";
 
@@ -8,7 +9,13 @@ interface Course {
   _id: string;
   name: string;
   description?: string;
+  duration?: string;
+  defaultFee: number;
+  feeType?: string;
   status: string;
+  isEmiAvailable?: boolean;
+  emiType?: string;
+  emiDuration?: number;
 }
 
 export default function CoursesPage() {
@@ -17,28 +24,29 @@ export default function CoursesPage() {
   const [formData, setFormData] = useState({
     name: "",
     description: "",
+    duration: "",
+    defaultFee: "" as number | string,
+    feeType: "total",
     status: "active",
+    isEmiAvailable: false,
+    emiType: "monthly",
+    emiDuration: 1,
   });
 
   const [saving, setSaving] = useState(false);
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  async function fetchCourses() {
-    try {
-      const res = await fetch("/api/courses");
-
-      const data = await res.json();
-
-      if (data.success) {
-        setCourses(data.data);
-      }
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
+  const fetchCourses = async () => {
+    const res = await fetch("/api/courses");
+    const data = await res.json();
+    if (data.success) {
+      return data.data as Course[];
     }
-  }
+    throw new Error("Failed to load courses");
+  };
+
+  const { data: courses = [], isLoading: loading, refetch } = useQuery({
+    queryKey: ['courses'],
+    queryFn: fetchCourses,
+  });
 
   async function saveCourse() {
     try {
@@ -49,7 +57,7 @@ export default function CoursesPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...formData, defaultFee: Number(formData.defaultFee) || 0 }),
       });
 
       const data = await res.json();
@@ -64,12 +72,18 @@ export default function CoursesPage() {
       setFormData({
         name: "",
         description: "",
+        duration: "",
+        defaultFee: "",
+        feeType: "total",
         status: "active",
+        isEmiAvailable: false,
+        emiType: "monthly",
+        emiDuration: 1,
       });
 
       setOpenSheet(false);
 
-      fetchCourses();
+      refetch();
     } catch (error) {
       console.error(error);
       toast.error("Something went wrong.");
@@ -89,7 +103,7 @@ export default function CoursesPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...formData, defaultFee: Number(formData.defaultFee) || 0 }),
       });
 
       const data = await res.json();
@@ -104,13 +118,19 @@ export default function CoursesPage() {
       setFormData({
         name: "",
         description: "",
+        duration: "",
+        defaultFee: "",
+        feeType: "total",
         status: "active",
+        isEmiAvailable: false,
+        emiType: "monthly",
+        emiDuration: 1,
       });
 
       setOpenSheet(false);
       setEditingCourse(null);
 
-      fetchCourses();
+      refetch();
     } catch (error) {
       console.error(error);
       toast.error("Something went wrong.");
@@ -119,9 +139,7 @@ export default function CoursesPage() {
     }
   }
 
-  useEffect(() => {
-    fetchCourses();
-  }, []);
+  // fetchCourses is handled by useQuery
 
   if (loading) {
     return <p>Loading...</p>;
@@ -135,7 +153,13 @@ export default function CoursesPage() {
           setFormData({
             name: "",
             description: "",
+            duration: "",
+            defaultFee: "",
+            feeType: "total",
             status: "active",
+            isEmiAvailable: false,
+            emiType: "monthly",
+            emiDuration: 1,
           });
           setOpenSheet(true);
         }}
@@ -158,9 +182,17 @@ export default function CoursesPage() {
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1 min-w-0">
                 <h2 className="text-[16px] font-semibold text-slate-800 truncate">{course.name}</h2>
-                <p className="mt-1 text-[13px] text-slate-500 line-clamp-2">
-                  {course.description || "No description"}
-                </p>
+                <div className="mt-1 flex items-center gap-2 text-[13px] text-slate-500">
+                  <span className="line-clamp-2">{course.description || "No description"}</span>
+                  {course.duration && (
+                    <>
+                      <span className="text-slate-300">•</span>
+                      <span>{course.duration}</span>
+                    </>
+                  )}
+                  <span className="text-slate-300">•</span>
+                  <span className="text-slate-700 font-medium">₹{course.defaultFee}</span>
+                </div>
                 <div className="mt-3">
                   <span
                     className={`inline-block rounded-md px-2 py-0.5 text-[13px] font-medium capitalize ${
@@ -180,7 +212,13 @@ export default function CoursesPage() {
                   setFormData({
                     name: course.name,
                     description: course.description || "",
+                    duration: course.duration || "",
+                    defaultFee: course.defaultFee || 0,
+                    feeType: course.feeType || "total",
                     status: course.status,
+                    isEmiAvailable: course.isEmiAvailable || false,
+                    emiType: course.emiType || "monthly",
+                    emiDuration: course.emiDuration || 1,
                   });
                   setOpenSheet(true);
                 }}
@@ -235,6 +273,158 @@ export default function CoursesPage() {
               className="w-full rounded-xl border border-slate-300 p-4"
             />
           </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="mb-2 block text-sm font-medium">
+                Course Fee
+              </label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={formData.defaultFee}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === "") {
+                    setFormData({ ...formData, defaultFee: "" });
+                    return;
+                  }
+                  if (val.includes('-')) {
+                    toast.error("Negative values are not allowed");
+                    return;
+                  }
+                  const parts = val.split('.');
+                  if (parts.length > 2) {
+                    toast.error("Only one decimal point is allowed");
+                    return;
+                  }
+                  if (/^\d*\.?\d*$/.test(val)) {
+                    setFormData({ ...formData, defaultFee: val });
+                  } else {
+                    toast.error("Please enter a valid number");
+                  }
+                }}
+                placeholder="Enter course fee"
+                className="h-12 w-full rounded-xl border border-slate-300 px-4"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium">
+                Fee Type
+              </label>
+              <select
+                value={formData.feeType}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    feeType: e.target.value,
+                  })
+                }
+                className="h-12 w-full rounded-xl border border-slate-300 px-4 bg-white"
+              >
+                <option value="total">Total Fee</option>
+                <option value="monthly">Monthly Fee</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium">
+              Duration (Optional)
+            </label>
+            <input
+              type="text"
+              value={formData.duration ?? ""}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  duration: e.target.value,
+                })
+              }
+              placeholder="e.g. 6 Months, 1 Year"
+              className="h-12 w-full rounded-xl border border-slate-300 px-4"
+            />
+          </div>
+
+          <div className="flex items-center justify-between rounded-xl border border-slate-200 p-4">
+            <div>
+              <h4 className="font-medium">Enable EMI Option</h4>
+              <p className="text-sm text-slate-500">Allow students to pay via EMI</p>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setFormData({
+                  ...formData,
+                  isEmiAvailable: !formData.isEmiAvailable,
+                })
+              }
+              className={`relative h-7 w-12 rounded-full transition-all duration-300 ${
+                formData.isEmiAvailable ? "bg-green-500" : "bg-slate-300"
+              }`}
+            >
+              <span
+                className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all duration-300 ${
+                  formData.isEmiAvailable ? "left-6" : "left-1"
+                }`}
+              />
+            </button>
+          </div>
+
+          {formData.isEmiAvailable && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="mb-2 block text-sm font-medium">EMI Type</label>
+                <select
+                  value={formData.emiType}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      emiType: e.target.value,
+                      emiDuration: 1, // Reset duration when type changes
+                    })
+                  }
+                  className="h-12 w-full rounded-xl border border-slate-300 px-4 bg-white"
+                >
+                  <option value="monthly">Monthly</option>
+                  <option value="quarterly">Quarterly</option>
+                  <option value="yearly">Yearly</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium">Duration</label>
+                <select
+                  value={formData.emiDuration}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      emiDuration: parseInt(e.target.value),
+                    })
+                  }
+                  className="h-12 w-full rounded-xl border border-slate-300 px-4 bg-white"
+                >
+                  {Array.from(
+                    {
+                      length:
+                        formData.emiType === "monthly"
+                          ? 12
+                          : formData.emiType === "quarterly"
+                          ? 6
+                          : 6,
+                    },
+                    (_, i) => (
+                      <option key={i + 1} value={i + 1}>
+                        {i + 1} {formData.emiType === "monthly" ? "Months" : formData.emiType === "quarterly" ? "Quarters" : "Years"}
+                      </option>
+                    )
+                  )}
+                </select>
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-between rounded-xl border border-slate-200 p-4">
   <div>
     <h4 className="font-medium">Course Status</h4>

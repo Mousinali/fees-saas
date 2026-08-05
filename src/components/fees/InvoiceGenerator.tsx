@@ -1,12 +1,13 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import dayjs from "dayjs";
 import Link from "next/link";
+import toast from "react-hot-toast";
 
-interface Payment {
+export interface Payment {
   _id: string;
   studentId: { _id: string; fullName: string; phone: string };
   batchId: { _id: string; name: string };
@@ -19,9 +20,14 @@ interface Payment {
   message?: string;
   ownerId?: {
     coachingName?: string;
+    profileImage?: string;
+    phone?: string;
     invoiceSettings?: {
       themeColor?: string;
       customNote?: string;
+      logoUrl?: string;
+      address?: string;
+      phone?: string;
     };
   };
 }
@@ -31,32 +37,182 @@ interface InvoiceGeneratorProps {
   showDetailsButton?: boolean;
 }
 
+export function InvoiceTemplate({ payment, invoiceRef, isHidden = false }: { payment: Payment, invoiceRef?: React.RefObject<HTMLDivElement | null>, isHidden?: boolean }) {
+  const themeColor = payment.ownerId?.invoiceSettings?.themeColor || "#1d4ed8";
+  const customNote = payment.ownerId?.invoiceSettings?.customNote || "Thank you for your payment!";
+  const coachingName = payment.ownerId?.coachingName || "Fees Management SaaS";
+  const logoImage = payment.ownerId?.invoiceSettings?.logoUrl || payment.ownerId?.profileImage;
+  const invoiceAddress = payment.ownerId?.invoiceSettings?.address;
+  const invoicePhone = payment.ownerId?.invoiceSettings?.phone || payment.ownerId?.phone;
+
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+  const [contentHeight, setContentHeight] = useState(850);
+
+  useEffect(() => {
+    if (isHidden || !wrapperRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const width = entry.contentRect.width;
+        if (width < 850) {
+          setScale(width / 850);
+        } else {
+          setScale(1);
+        }
+      }
+    });
+    observer.observe(wrapperRef.current);
+    
+    // Get actual height for scaled wrapper
+    if (contentRef.current) {
+      setContentHeight(contentRef.current.clientHeight);
+    }
+    
+    return () => observer.disconnect();
+  }, [isHidden]);
+
+  const activeRef = invoiceRef || contentRef;
+
+  const content = (
+    <div
+      ref={activeRef as any}
+      className={`w-[850px] bg-white p-12`}
+      style={{ fontFamily: "'Inter', sans-serif", color: "#000" }}
+    >
+      {/* Header Section */}
+      <div className="flex justify-between items-start">
+        <div className="flex flex-col">
+          {/* Logo Placeholder */}
+          <div className="w-24 h-24 flex items-center justify-center bg-[#f8fafc] text-[#94a3b8] font-bold mb-3 overflow-hidden">
+            {logoImage ? (
+              <img src={logoImage} alt="Logo" className="w-full h-full object-cover" crossOrigin="anonymous" />
+            ) : (
+              <span className="text-4xl">{coachingName?.charAt(0) || "C"}</span>
+            )}
+          </div>
+          <h1 className="text-xl font-bold uppercase tracking-wide">
+            {coachingName}
+          </h1>
+        </div>
+        
+        <div className="text-right mt-2">
+          <h2 className="text-[40px] font-bold uppercase tracking-tight mb-4 text-[#1a1a1a]">FEE RECEIPT</h2>
+          <div className="text-[15px] space-y-1">
+            {invoiceAddress && <p style={{ whiteSpace: "pre-line" }}>{invoiceAddress}</p>}
+            {invoicePhone && <p>{invoicePhone}</p>}
+          </div>
+        </div>
+      </div>
+
+      {/* Divider line */}
+      <div className="w-full border-t-[3px] border-black my-5"></div>
+
+      {/* Details Section */}
+      <div className="flex justify-between mb-8 text-[16px]">
+        {/* Left */}
+        <div className="w-1/2">
+          <div className="grid grid-cols-[140px_1fr] gap-3">
+            <span className="font-bold">Student Name</span>
+            <span>{payment.studentId?.fullName}</span>
+            <span className="font-bold">Payment Mode</span>
+            <span className="uppercase">{payment.paymentMethod.replace("_", " ")}</span>
+          </div>
+        </div>
+        
+        {/* Right */}
+        <div className="w-1/2 pl-12">
+          <div className="grid grid-cols-[140px_1fr] gap-3">
+            <span className="font-bold">Receipt No</span>
+            <span>{payment.receiptNumber?.includes("-") ? `#${payment.receiptNumber.split("-").pop()}` : payment.receiptNumber}</span>
+            
+            <span className="font-bold">Date</span>
+            <span>{dayjs(payment.paymentDate).format("DD-MM-YYYY")}</span>
+            
+            
+          </div>
+        </div>
+      </div>
+
+      {/* Table */}
+      <table className="w-full border-collapse border border-[#cbd5e1] mb-6 text-[16px]">
+        <thead>
+          <tr className="border-b border-[#cbd5e1] bg-[#f8fafc]">
+            <th className="border-r border-[#cbd5e1] p-3 font-bold w-[10%] text-left">Sl.</th>
+            <th className="border-r border-[#cbd5e1] p-3 font-bold w-[40%] text-left">Particulars</th>
+            <th className="border-r border-[#cbd5e1] p-3 font-bold w-[30%] text-left">Remarks</th>
+            <th className="p-3 font-bold text-right w-[20%]">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td className="border-r border-[#cbd5e1] p-3 align-top">1</td>
+            <td className="border-r border-[#cbd5e1] p-3 align-top">Coaching</td>
+            <td className="border-r border-[#cbd5e1] p-3 align-top">{payment.feeOption}</td>
+            <td className="p-3 text-right align-top font-medium">₹{payment.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* Grand Total */}
+      <div className="flex justify-end mb-12">
+        <div className="border-t-[3px] border-black pt-3 pb-1 flex items-center justify-end text-[22px] gap-6 pr-2 pl-12">
+          <span>Grand Total</span>
+          <span className="font-bold">₹{payment.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+        </div>
+      </div>
+      
+      <div className="flex justify-between items-end mt-4">
+        <div>
+          <p className="text-[16px] leading-relaxed">This is a computer generated receipt. No signature<br/>required.</p>
+          <p className="text-[16px] mt-1">{customNote}</p>
+        </div>
+        
+        <div className="text-center pb-2">
+          <div className="border-t border-black w-56 mx-auto pt-2"></div>
+          <p className="text-[16px]">Authorized Signature</p>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (isHidden) {
+    return (
+      <div className="absolute left-[-9999px] top-[-9999px]">
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <div ref={wrapperRef} className="w-full flex justify-center bg-slate-50/50 rounded-xl overflow-hidden" style={{ height: scale < 1 ? contentHeight * scale : 'auto' }}>
+      <div className="origin-top" style={{ transform: `scale(${scale})`, width: 850 }}>
+        {content}
+      </div>
+    </div>
+  );
+}
+
 export default function InvoiceGenerator({ payment, showDetailsButton = false }: InvoiceGeneratorProps) {
   const invoiceRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
 
-  const themeColor = payment.ownerId?.invoiceSettings?.themeColor || "#1d4ed8";
-  const customNote = payment.ownerId?.invoiceSettings?.customNote || "Thank you for your payment!";
-  const coachingName = payment.ownerId?.coachingName || "Fees Management SaaS";
+  const createPdfBlob = async () => {
+    if (!invoiceRef.current) return null;
+    const canvas = await html2canvas(invoiceRef.current, { scale: 1.5 });
+    const imgData = canvas.toDataURL("image/jpeg", 0.7);
+    const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4", compress: true });
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+    pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight, undefined, "FAST");
+    return pdf.output("blob");
+  };
 
   const generatePDF = async () => {
-    if (!invoiceRef.current) return;
     setDownloading(true);
     try {
-      // Lower scale and use JPEG with compression to reduce file size drastically
-      const canvas = await html2canvas(invoiceRef.current, { scale: 1.5 });
-      const imgData = canvas.toDataURL("image/jpeg", 0.7);
-      
-      // Enable PDF compression
-      const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4", compress: true });
-      
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      
-      // Add image with FAST compression alias
-      pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight, undefined, "FAST");
-      
-      const blob = pdf.output("blob");
+      const blob = await createPdfBlob();
+      if (!blob) return;
       const url = URL.createObjectURL(blob);
       window.open(url, "_blank");
     } catch (error) {
@@ -66,10 +222,21 @@ export default function InvoiceGenerator({ payment, showDetailsButton = false }:
     }
   };
 
-  const shareWhatsApp = () => {
-    const text = `*FEE RECEIPT*\nReceipt No: ${payment.receiptNumber}\nStudent: ${payment.studentId?.fullName}\nAmount: ₹${payment.amount}\nDate: ${dayjs(payment.paymentDate).format("DD MMM YYYY")}\n\nThank you!`;
-    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
-    window.open(url, "_blank");
+  const shareWhatsApp = async () => {
+    try {
+      const text = `*FEE RECEIPT*\nReceipt No: ${payment.receiptNumber}\nStudent: ${payment.studentId?.fullName}\nAmount: ₹${payment.amount}\nDate: ${dayjs(payment.paymentDate).format("DD MMM YYYY")}\n\nThank you!`;
+
+      let phone = payment.studentId?.phone?.replace(/\D/g, '') || '';
+      if (phone.length === 10) {
+        phone = `91${phone}`;
+      }
+      const url = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+      window.open(url, "_blank");
+      
+    } catch (error: any) {
+      console.error("Failed to share", error);
+      toast.error("Failed to open WhatsApp");
+    }
   };
 
   return (
@@ -106,74 +273,7 @@ export default function InvoiceGenerator({ payment, showDetailsButton = false }:
       </div>
 
       {/* Hidden Invoice Template for Rendering */}
-      <div className="absolute left-[-9999px] top-[-9999px]">
-        <div
-          ref={invoiceRef}
-          className="w-[800px] p-10"
-          style={{ fontFamily: "'Inter', sans-serif", backgroundColor: "#ffffff", color: "#1e293b" }}
-        >
-          <div className="flex justify-between items-start border-b-2 pb-6 mb-6" style={{ borderColor: themeColor }}>
-            <div>
-              <h1 className="text-4xl font-bold tracking-tight" style={{ color: themeColor }}>FEE RECEIPT</h1>
-              <p className="mt-2 font-medium text-lg" style={{ color: "#475569" }}>Receipt No: <span style={{ color: "#0f172a" }}>{payment.receiptNumber}</span></p>
-            </div>
-            <div className="text-right">
-              <h2 className="text-2xl font-bold" style={{ color: "#1e293b" }}>{coachingName}</h2>
-              <p className="mt-1 font-medium" style={{ color: "#64748b" }}>Date: {dayjs(payment.paymentDate).format("DD MMM YYYY")}</p>
-            </div>
-          </div>
-
-          <div className="mt-8 grid grid-cols-2 gap-8">
-            <div className="rounded-xl border p-5" style={{ borderColor: "#e2e8f0", backgroundColor: "#f8fafc" }}>
-              <h3 className="text-sm font-semibold uppercase tracking-wider mb-3" style={{ color: "#64748b" }}>Student Details</h3>
-              <p className="font-medium text-lg" style={{ color: "#1e293b" }}>{payment.studentId?.fullName}</p>
-              <p style={{ color: "#475569" }}>Phone: {payment.studentId?.phone}</p>
-              <p className="mt-2" style={{ color: "#475569" }}><span className="font-medium">Batch:</span> {payment.batchId?.name}</p>
-            </div>
-            <div className="rounded-xl border p-5" style={{ borderColor: "#e2e8f0", backgroundColor: "#f8fafc" }}>
-              <h3 className="text-sm font-semibold uppercase tracking-wider mb-3" style={{ color: "#64748b" }}>Payment Info</h3>
-              <p style={{ color: "#475569" }}><span className="font-medium">Method:</span> <span className="capitalize">{payment.paymentMethod.replace("_", " ")}</span></p>
-              <p style={{ color: "#475569" }}><span className="font-medium">Fee Option:</span> {payment.feeOption}</p>
-              {payment.isAdvance && <p className="font-medium mt-1" style={{ color: "#f97316" }}>Advance Payment</p>}
-            </div>
-          </div>
-
-          <div className="mt-8 overflow-hidden rounded-xl border" style={{ borderColor: "#e2e8f0" }}>
-            <table className="w-full text-left">
-              <thead style={{ backgroundColor: "#f1f5f9" }}>
-                <tr>
-                  <th className="px-5 py-4 font-semibold" style={{ color: "#334155" }}>Description</th>
-                  <th className="px-5 py-4 font-semibold text-right" style={{ color: "#334155" }}>Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td className="px-5 py-6">
-                    <p className="font-medium" style={{ color: "#1e293b" }}>Tuition Fee - {payment.feeOption}</p>
-                    {payment.message && <p className="text-sm mt-1 italic" style={{ color: "#64748b" }}>Note: {payment.message}</p>}
-                  </td>
-                  <td className="px-5 py-6 text-right font-medium" style={{ color: "#1e293b" }}>
-                    ₹{payment.amount.toFixed(2)}
-                  </td>
-                </tr>
-              </tbody>
-              <tfoot style={{ backgroundColor: "#f8fafc" }}>
-                <tr>
-                  <td className="px-5 py-4 font-bold text-right uppercase tracking-wide" style={{ color: "#1e293b" }}>Total Paid</td>
-                  <td className="px-5 py-4 text-right font-bold text-xl" style={{ color: "#16a34a" }}>
-                    ₹{payment.amount.toFixed(2)}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-
-          <div className="mt-12 text-center text-sm pt-6 border-t" style={{ borderColor: "#e2e8f0", color: "#64748b" }}>
-            <p>This is a computer-generated receipt and does not require a physical signature.</p>
-            <p className="mt-2 font-medium" style={{ color: themeColor }}>{customNote}</p>
-          </div>
-        </div>
-      </div>
+      <InvoiceTemplate payment={payment} invoiceRef={invoiceRef} isHidden={true} />
     </>
   );
 }
