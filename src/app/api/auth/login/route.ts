@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
           success: false,
           message: "Email and password are required.",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
           success: false,
           message: "Invalid email or password.",
         },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
           success: false,
           message: "Your account has been blocked.",
         },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
           success: false,
           message: "Invalid email or password.",
         },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
       process.env.JWT_SECRET!,
       {
         expiresIn: "7d",
-      }
+      },
     );
 
     user.lastLogin = new Date();
@@ -91,12 +91,12 @@ export async function POST(request: NextRequest) {
     // });
 
     response.cookies.set("token", token, {
-  httpOnly: true,
-  secure: false,
-  sameSite: "lax",
-  maxAge: 60 * 60 * 24 * 7,
-  path: "/",
-});
+      httpOnly: true,
+      secure: false,
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 7,
+      path: "/",
+    });
 
     return response;
   } catch (error) {
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
         success: false,
         message: "Something went wrong.",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
